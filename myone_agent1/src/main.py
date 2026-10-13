@@ -12,15 +12,18 @@
 
 
 # os 读取环境变量。
+import json
 import os
 import time
 import queue
 from context_compact import compact_messages
 from exceptions import classify
+from tools import WORKDIR
 from cron_scheduler import CRON_QUEUE
 from background_tasks import BACKGROUND_RESULTS
 from hooks import trigger_hooks
 import permission  # 导入即注册权限 Hook（UserPromptSubmit/PreToolUse/PostToolUse/Stop）
+from logging_setup import get_logger
 from mcp import CURRENT_TOOL_MAP,assemble_system_prompt,assemble_tool_pool
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
@@ -50,6 +53,9 @@ def build_chat_model()->ChatOpenAI:
     )
 MODEL = build_chat_model()
 
+log = get_logger("main")
+
+
 def call_model_with_recovery(system: str, messages: list, tools: list):
     """模型调用包裹恢复逻辑：临时失败指数退避重试，上下文过长则裁剪重试。"""
     llm = MODEL.bind_tools(tools)
@@ -63,15 +69,66 @@ def call_model_with_recovery(system: str, messages: list, tools: list):
             if info.is_context:
                 # 上下文超长：裁剪后重试，不睡眠。
                 messages = compact_messages(messages)
-                print("[recover] trimmed context and retrying once")
+                log.warning("context 超长，已裁剪重试")
             elif not info.retry:
                 # 表里标了不可重试（key 错、参数错等）→ 直接抛出，不再退避。
                 raise e
             else:
                 wait = 2 ** attempt
-                print(f"[recover] {info.hint}; retrying in {wait}s")
+                log.warning("%s；%ds 后重试", info.hint, wait)
                 time.sleep(wait)
     raise last_err
+
+
+# ---------------------------------------------------------------------------
+# 会话持久化：照抄 Aider append_chat_history 思路（追加写盘 + 失败降级）
+# ---------------------------------------------------------------------------
+
+HISTORY_FILE = WORKDIR / ".memory" / "history.jsonl"
+# 恢复时最多取最近 N 条，避免历史无限累积导致上下文超长。
+HISTORY_LIMIT = 20
+
+
+def append_history_entry(role: str, content: str) -> None:
+    """把一条对话记录追加到历史文件（只存 user/assistant 文本，不存工具调用）。"""
+    global HISTORY_FILE
+    if HISTORY_FILE is None:
+        return
+    if not content:
+        return  # 空内容（模型只调工具不输出文本）不写入，避免污染历史
+    try:
+        HISTORY_FILE.parent.mkdir(parents=True, exist_ok=True)
+        line = json.dumps({"role": role, "content": content}, ensure_ascii=False)
+        with HISTORY_FILE.open("a", encoding="utf-8", errors="ignore") as f:
+            f.write(line + "\n")
+    except (PermissionError, OSError) as err:
+        log.warning("history 写入失败，已禁用：%s", err)
+        HISTORY_FILE = None
+
+
+def load_history() -> list:
+    """启动时把历史文件读回成消息列表（损坏行跳过）。"""
+    if HISTORY_FILE is None or not HISTORY_FILE.exists():
+        return []
+    msgs = []
+    try:
+        with HISTORY_FILE.open("r", encoding="utf-8", errors="ignore") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                role, content = entry.get("role"), entry.get("content", "")
+                if role == "user":
+                    msgs.append(HumanMessage(content=content))
+                elif role == "assistant":
+                    msgs.append(AIMessage(content=content))
+    except (PermissionError, OSError) as err:
+        log.warning("history 读取失败：%s", err)
+    return msgs[-HISTORY_LIMIT:]
 
 
 def inject_pending(messages: list) -> None:
@@ -92,7 +149,7 @@ def inject_pending(messages: list) -> None:
         messages.append(HumanMessage(content=f"<cron reminder>{item}</cron reminder>"))
         count += 1
     if count:
-        print(f"[inject] {count} pending notification(s)")
+        log.info("注入 %d 条待处理通知", count)
 
 
 def execute_tool_calls(response: AIMessage) -> list:
@@ -175,7 +232,9 @@ def print_tool_activity(message) -> None:
                 bg = " (background)" if args.get("run_in_background") else ""
                 print(f"\033[33m$ {args.get('command', '')}{bg}\033[0m")
             else:
-                print(f"\033[33m{name}{args}\033[0m")
+                # 精简回放：show 只留关键参数，避免整个 dict 平铺刷屏。
+                show = {k: args[k] for k in ("path", "pattern", "command") if k in args}
+                print(f"\033[33m{name}{show if show else ''}\033[0m")
         return
     if isinstance(message, ToolMessage):
         content = str(message.content)
@@ -196,7 +255,9 @@ if __name__ == "__main__":
     print("s15: Integrated Harness")
     print("输入问题，回车发送。输入 q 退出。\n")
 
-    history = []
+    history = load_history()
+    print(f"[history] 已恢复 {len(history)} 条对话记录\n")
+
     while True:
         try:
             query = input("\033[36ms15 >> \033[0m")
@@ -206,6 +267,7 @@ if __name__ == "__main__":
             break
 
         history.append(HumanMessage(content=query))
+        append_history_entry("user", query)
         start = len(history)
         agent_loop(history)
 
@@ -214,5 +276,16 @@ if __name__ == "__main__":
         last = last_assistant_message(history)
         if last is not None:
             print_assistant_message(last)
+            content = last.content
+            if isinstance(content, str):
+                append_history_entry("assistant", content)
+            elif isinstance(content, list):
+                texts = []
+                for block in content:
+                    if isinstance(block, dict) and block.get("type") == "text":
+                        texts.append(block.get("text", ""))
+                    elif hasattr(block, "text"):
+                        texts.append(block.text)
+                append_history_entry("assistant", "\n".join(t for t in texts if t))
         print()
 

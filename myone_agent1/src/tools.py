@@ -21,19 +21,33 @@ def resolve_path(raw_path: str) -> Path:
     return (WORKDIR / candidate).resolve()
 
 
+_BASH_DESC = """
+平台提示（重要）：本机是 Windows，命令由 cmd.exe（shell=True）执行，
+不是 Linux/bash：
+- 用 `dir` 而非 `ls`，用 `type` 而非 `cat`，用 `findstr` 而非 `grep`
+- 路径用反斜杠（C:\\xxx），不要写 /c/xxx 或 /home/ 这种 Linux 风格
+- 当前工作目录（WORKDIR）= {workdir}，命令默认在此目录执行
+- 不要使用 $()、$(command)、单引号展开等 bash 语法，它们不会被解析
+- 可以用 `&` 连接多条命令"""
+
+
 @tool
-def run_bash(command:str,run_in_background:bool=False)->str:
+def run_bash(command: str, run_in_background: bool = False) -> str:
     """执行一个shell命令。设置run_in_background=True以异步运行并返回占用符。"""
     if run_in_background:
         from background_tasks import start_background_task   # 延迟导入，断顶层循环
         return start_background_task(command)
 
     try:
-        r=subprocess.run(command,shell=True,cwd=WORKDIR,capture_output=True,text=True,encoding="utf-8",errors="replace")
-        out=(r.stdout+r.stderr).strip()
+        r = subprocess.run(command, shell=True, cwd=WORKDIR, capture_output=True, text=True, encoding="utf-8", errors="replace")
+        out = (r.stdout + r.stderr).strip()
         return out[:50000] if out else "(no output)"
     except OSError as e:
         return f"Error: {e}"
+
+
+# 装饰后覆盖 description，把 WORKDIR 动态填进平台提示（@tool 无法用 f-string docstring）。
+run_bash.description = run_bash.description.split("。")[0] + "。" + _BASH_DESC.format(workdir=WORKDIR)
 @tool
 def run_read(path:str,limit:int | None=None)->str:
     """读取一个UTF-8文本文件，可选地限制返回的行数。"""

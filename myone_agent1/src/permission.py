@@ -85,20 +85,26 @@ def check_permission(tool_name:str,args:dict)->bool:
 
 
 
-def on_pre_tool_use(tool_name,tool_args):
-    print("[PreToolUse]",tool_name,tool_args)
-    if not check_permission(tool_name,tool_args):
+def on_pre_tool_use(tool_name, tool_args):
+    # 实时精简版：只打工具名，参数留给 main 的回放，避免重复刷屏。
+    if tool_name == "run_bash":
+        cmd = tool_args.get("command", "")
+        bg = " (background)" if tool_args.get("run_in_background") else ""
+        print(f"   ⚙ {tool_name}: {cmd}{bg}")
+    else:
+        print(f"   ⚙ {tool_name}")
+    if not check_permission(tool_name, tool_args):
         return "Permission denied"
 
 
-def on_post_tool_use(tool_name,tool_args,result):
-    print("[PostToolUse]",tool_name)
+def on_post_tool_use(tool_name, tool_args, result):
+    print(f"   ✓ {tool_name}")
 
 
-register_hooks("UserPromptSubmit", lambda c: print("[UserPromptSubmit]", c))
+register_hooks("UserPromptSubmit", lambda c: None)  # 用户输入已在交互层显示，这里跳过
 register_hooks("PreToolUse", on_pre_tool_use)
 register_hooks("PostToolUse", on_post_tool_use)
-register_hooks("Stop", lambda msgs: print("[Stop]", len(msgs)))
+register_hooks("Stop", lambda msgs: None)
 
 
 
