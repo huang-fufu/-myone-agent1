@@ -1,0 +1,23 @@
+# 环境变量与凭据（绝不提交）
+.env
+.env.local
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# 运行时产物
+.memory/
+demo.txt
+
+# IDE
+.idea/
+.vscode/
+
+# 临时测试脚本（保留或排除自定）
+# _acceptance.py
+# _smoke_test.py
+# _mcp_test.py
