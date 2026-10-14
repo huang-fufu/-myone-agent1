@@ -25,6 +25,7 @@ from hooks import trigger_hooks
 import permission  # 导入即注册权限 Hook（UserPromptSubmit/PreToolUse/PostToolUse/Stop）
 from logging_setup import get_logger
 from mcp import CURRENT_TOOL_MAP,assemble_system_prompt,assemble_tool_pool
+from commands import Commands
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, ToolMessage, AIMessage, SystemMessage
 
@@ -54,6 +55,9 @@ def rotate_api_key():
     log.warning("已切换到第 %d 个 API key", API_KEY_INDEX[0] + 1)
 
 log = get_logger("main")
+
+# 斜杠命令实例：/help /commit /test 等，主循环里 / 开头直接走它。
+COMMANDS = Commands()
 
 
 def call_model_with_recovery(system: str, messages: list, tools: list):
@@ -90,6 +94,25 @@ def call_model_with_recovery(system: str, messages: list, tools: list):
 HISTORY_FILE = WORKDIR / ".memory" / "history.jsonl"
 # 恢复时最多取最近 N 条，避免历史无限累积导致上下文超长。
 HISTORY_LIMIT = 20
+# 磁盘文件本身的行数上限：超过则只留尾部，防止 history.jsonl 无限膨胀。
+HISTORY_MAX_LINES = 500
+
+
+def _trim_history_file() -> None:
+    """历史文件超过行数上限时，只保留尾部最近若干条。"""
+    global HISTORY_FILE
+    if HISTORY_FILE is None or not HISTORY_FILE.exists():
+        return
+    try:
+        with HISTORY_FILE.open("r", encoding="utf-8", errors="ignore") as f:
+            lines = f.readlines()
+        if len(lines) <= HISTORY_MAX_LINES:
+            return
+        with HISTORY_FILE.open("w", encoding="utf-8") as f:
+            f.writelines(lines[-HISTORY_MAX_LINES:])
+        log.info("history 超过 %d 行，已裁剪保留尾部", HISTORY_MAX_LINES)
+    except (PermissionError, OSError) as err:
+        log.warning("history 清理失败：%s", err)
 
 
 def append_history_entry(role: str, content: str) -> None:
@@ -104,6 +127,7 @@ def append_history_entry(role: str, content: str) -> None:
         line = json.dumps({"role": role, "content": content}, ensure_ascii=False)
         with HISTORY_FILE.open("a", encoding="utf-8", errors="ignore") as f:
             f.write(line + "\n")
+        _trim_history_file()  # 追加后检查行数上限，防止文件无限膨胀
     except (PermissionError, OSError) as err:
         log.warning("history 写入失败，已禁用：%s", err)
         HISTORY_FILE = None
@@ -268,6 +292,14 @@ if __name__ == "__main__":
             break
         if query.strip().lower() in ("q", "exit", ""):
             break
+
+        # 斜杠命令：/ 开头不走模型，直接命令分发（省 token、响应快）。
+        if query.strip().startswith("/") or query.strip().startswith("!"):
+            result = COMMANDS.run(query.strip())
+            if result:
+                print(result)
+            print()
+            continue
 
         history.append(HumanMessage(content=query))
         append_history_entry("user", query)

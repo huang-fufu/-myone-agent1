@@ -73,6 +73,25 @@ class TestHistory(unittest.TestCase):
             self.assertIsNone(main.HISTORY_FILE)
             main.append_history_entry("user", "c")  # 禁用后不抛异常
 
+    def test_trim_keeps_recent_when_over_limit(self):
+        # 文件超过 HISTORY_MAX_LINES 行 → 追加后自动裁剪，只留尾部。
+        with mock.patch.object(main, "HISTORY_FILE", self.tmp):
+            for i in range(main.HISTORY_MAX_LINES + 50):
+                main.append_history_entry("user", f"msg{i}")
+        lines = self.tmp.read_text(encoding="utf-8").splitlines()
+        self.assertEqual(len(lines), main.HISTORY_MAX_LINES)
+        first = json.loads(lines[0])
+        last = json.loads(lines[-1])
+        self.assertEqual(first["content"], "msg50")      # 最早的 msg0-49 被裁掉
+        self.assertEqual(last["content"], f"msg{main.HISTORY_MAX_LINES + 49}")  # 最新保留
+
+    def test_trim_does_nothing_below_limit(self):
+        with mock.patch.object(main, "HISTORY_FILE", self.tmp):
+            for i in range(10):
+                main.append_history_entry("user", f"msg{i}")
+        lines = self.tmp.read_text(encoding="utf-8").splitlines()
+        self.assertEqual(len(lines), 10)  # 未超限不裁剪
+
 
 if __name__ == "__main__":
     unittest.main()

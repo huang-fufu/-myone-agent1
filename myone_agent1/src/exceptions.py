@@ -19,6 +19,9 @@ EXCEPTIONS = {
     "RateLimitError":          ExInfo(True,  "被限流了，稍后再试或检查配额"),
     "APIConnectionError":      ExInfo(True,  "连接失败，检查网络或服务状态"),
     "APITimeoutError":         ExInfo(True,  "请求超时，服务可能过载"),
+    # 标准库级通用异常：某些 SDK 底层会直接抛这些，而不是包一层自家异常。
+    "ConnectionError":         ExInfo(True,  "网络连接失败，检查网络后重试"),
+    "TimeoutError":            ExInfo(True,  "请求超时，服务可能过载"),
     "InternalServerError":     ExInfo(True,  "服务端故障，稍后重试"),
     "ServiceUnavailableError": ExInfo(True,  "服务不可用，稍后重试"),
     "AuthenticationError":     ExInfo(False, "API key 无效，请检查 .env"),

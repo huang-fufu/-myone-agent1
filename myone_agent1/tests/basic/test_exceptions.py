@@ -51,6 +51,17 @@ class TestClassify(unittest.TestCase):
         self.assertTrue(info.retry)
         self.assertIn("未知错误", info.hint)
 
+    def test_stdlib_connection_error_retryable(self):
+        # 标准库级异常：网络波动底层可能直接抛这个，应视为可重试。
+        info = classify(ConnectionError("connection refused"))
+        self.assertTrue(info.retry)
+        self.assertIn("网络", info.hint)
+
+    def test_stdlib_timeout_error_retryable(self):
+        info = classify(TimeoutError("timed out"))
+        self.assertTrue(info.retry)
+        self.assertIn("超时", info.hint)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
