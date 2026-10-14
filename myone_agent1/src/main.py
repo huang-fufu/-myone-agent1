@@ -25,43 +25,43 @@ from hooks import trigger_hooks
 import permission  # 导入即注册权限 Hook（UserPromptSubmit/PreToolUse/PostToolUse/Stop）
 from logging_setup import get_logger
 from mcp import CURRENT_TOOL_MAP,assemble_system_prompt,assemble_tool_pool
-from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, ToolMessage, AIMessage, SystemMessage
 
-load_dotenv(override=True)
+from config import CONFIG
 
-# 变量名与根目录 .env 保持一致（MODEL_NAME / OPENAI_API_KEY / BASE_URL）。
-MODEL_NAME = os.getenv("MODEL_NAME", "").strip()
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
-OPENAI_BASE_URL = os.getenv("BASE_URL", "").strip() or None
-
-# 尽早检查配置，比等到第一次模型请求时才得到难懂的供应商错误更清楚。
-if not MODEL_NAME:
-    raise RuntimeError("请在 .env 中设置 MODEL_NAME")
-if not OPENAI_API_KEY:
-    raise RuntimeError("请在 .env 中设置 OPENAI_API_KEY")
+API_KEY_INDEX = [0]  # 当前使用的 key 下标（运行时状态，非配置）
 
 def build_chat_model()->ChatOpenAI:
     return ChatOpenAI(
-        model=MODEL_NAME,
+        model=CONFIG.model_name,
         max_completion_tokens=8000,
         temperature=0,
-        api_key=OPENAI_API_KEY,
-        base_url=OPENAI_BASE_URL
+        api_key=CONFIG.api_keys[API_KEY_INDEX[0]],
+        base_url=CONFIG.base_url
 
     )
 MODEL = build_chat_model()
+
+
+def rotate_api_key():
+    """限流时切换到下一个 key 并重建 model；只有一个 key 时无操作。"""
+    if len(CONFIG.api_keys) <= 1:
+        return
+    API_KEY_INDEX[0] = (API_KEY_INDEX[0] + 1) % len(CONFIG.api_keys)
+    global MODEL
+    MODEL = build_chat_model()
+    log.warning("已切换到第 %d 个 API key", API_KEY_INDEX[0] + 1)
 
 log = get_logger("main")
 
 
 def call_model_with_recovery(system: str, messages: list, tools: list):
     """模型调用包裹恢复逻辑：临时失败指数退避重试，上下文过长则裁剪重试。"""
-    llm = MODEL.bind_tools(tools)
     last_err: Exception | None = None
     for attempt in range(4):
         try:
+            llm = MODEL.bind_tools(tools)  # 每次重新 bind，保证轮换 key 后下一轮生效
             return llm.invoke([SystemMessage(content=system)] + messages)
         except Exception as e:
             last_err = e
@@ -74,6 +74,9 @@ def call_model_with_recovery(system: str, messages: list, tools: list):
                 # 表里标了不可重试（key 错、参数错等）→ 直接抛出，不再退避。
                 raise e
             else:
+                # 限流 → 先切下一个 key，再退避重试。
+                if type(e).__name__ == "RateLimitError":
+                    rotate_api_key()
                 wait = 2 ** attempt
                 log.warning("%s；%ds 后重试", info.hint, wait)
                 time.sleep(wait)

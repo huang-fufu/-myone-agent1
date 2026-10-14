@@ -31,6 +31,19 @@ _BASH_DESC = """
 - 可以用 `&` 连接多条命令"""
 
 
+def _trim_output(out: str, max_chars: int = 50000) -> str:
+    """长输出保留头尾 + 中间省略——报错信息（traceback）常在尾部，掐尾会丢关键信息。
+
+    Aider 不截断输出，靠"决策层"控制注入；agent 无法每步问人，
+    所以这里自动截断，但保留头尾让模型能看到尾部报错。
+    """
+    if len(out) <= max_chars:
+        return out
+    head = out[: max_chars // 2]
+    tail = out[-max_chars // 2 :]
+    return f"{head}\n...({len(out) - max_chars} 字符省略)...\n{tail}"
+
+
 @tool
 def run_bash(command: str, run_in_background: bool = False) -> str:
     """执行一个shell命令。设置run_in_background=True以异步运行并返回占用符。"""
@@ -39,9 +52,14 @@ def run_bash(command: str, run_in_background: bool = False) -> str:
         return start_background_task(command)
 
     try:
-        r = subprocess.run(command, shell=True, cwd=WORKDIR, capture_output=True, text=True, encoding="utf-8", errors="replace")
-        out = (r.stdout + r.stderr).strip()
-        return out[:50000] if out else "(no output)"
+        r = subprocess.run(command, shell=True, cwd=WORKDIR, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120)
+        out = _trim_output((r.stdout + r.stderr).strip())
+        # 返回退出码前缀，让模型能判断命令成败（借鉴 Aider 的 (code, output) 思路）。
+        if not out:
+            return f"[exit code {r.returncode}] (no output)"
+        return f"[exit code {r.returncode}]\n{out}"
+    except subprocess.TimeoutExpired:
+        return "Error: 命令执行超时（>120 秒），已终止"
     except OSError as e:
         return f"Error: {e}"
 

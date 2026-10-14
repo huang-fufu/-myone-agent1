@@ -9,8 +9,9 @@ from langchain_core.tools import tool, StructuredTool
 
 from tools import WORKDIR
 from hooks import register_hooks
+from config import CONFIG
 
-dangerous = ["rm -rf /", "sudo", "shutdown", "reboot", "mkfs", "dd if=", "> /dev/sda"]
+dangerous = CONFIG.dangerous_commands
 
 def check_deny_list(command:str)-> str | None:
     for pattern in dangerous:
@@ -44,12 +45,7 @@ def ask_user(tool_name:str,args:dict ,reason:str)-> bool:
     return choice in ("y","yes")
 
 
-MCP_HOST_POLICY={
-    "mcp__docs__search": "allow",
-    "mcp__docs__get_version": "allow",
-    "mcp__deploy__status": "allow",
-    "mcp__deploy__trigger": "confirm",
-}
+MCP_HOST_POLICY = CONFIG.mcp_host_policy
 
 
 def check_mcp_permission(tool_name:str)->bool:
