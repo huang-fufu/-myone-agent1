@@ -21,6 +21,7 @@ from memories import memory_section
 from subagents import task
 from todo_write import todo_write
 from cron_scheduler import list_crons, cancel_cron, schedule_cron
+from repomap import build_repo_map
 
 
 def normalize_mcp_name(name: str) -> str:
@@ -168,6 +169,7 @@ SYSTEM_BASE = (
 def assemble_system_prompt(query_text: str = "") -> str:
     return "\n\n".join([
         SYSTEM_BASE,
+        build_repo_map(),           # 轻量代码地图：让模型开局看到项目结构
         skills_catalog.invoke({}),      # @tool 装饰过，须用 invoke 而非直接调用
         memory_section(query_text),     # 普通函数，直接调
         mcp_state_section(),
