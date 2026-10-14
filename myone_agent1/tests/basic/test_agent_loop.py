@@ -9,6 +9,7 @@
     python tests/test_agent_loop.py
 """
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -17,6 +18,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "src"))
 
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+
+from tools import WORKDIR
 
 import main
 
@@ -73,6 +76,53 @@ class TestExecuteToolCalls(unittest.TestCase):
         )
         self.assertEqual(len(outputs), 1)
         self.assertIn("unknown tool", outputs[0].content)
+
+    def test_write_broken_py_appends_linter_fix(self):
+        """linter 闭环：写完语法错误的 .py，应追加一条修复指令消息给模型。"""
+        with tempfile.TemporaryDirectory(dir=WORKDIR) as tmp:
+            path = str(Path(tmp) / "bad.py")
+            outputs = main.execute_tool_calls(
+                make_tool_call("call-3", "run_write", {"path": path, "content": "def broken(:\n    pass\n"})
+            )
+        self.assertEqual(len(outputs), 2)  # 写入结果 + linter 指令
+        linter_msg = outputs[1]
+        self.assertEqual(linter_msg.name, "linter")
+        self.assertIn("Fix any errors below", linter_msg.content)
+        self.assertIn("SyntaxError", linter_msg.content)
+
+    def test_write_clean_py_no_linter(self):
+        """语法正确的 .py 不该触发 linter 追加消息。"""
+        with tempfile.TemporaryDirectory(dir=WORKDIR) as tmp:
+            path = str(Path(tmp) / "ok.py")
+            outputs = main.execute_tool_calls(
+                make_tool_call("call-4", "run_write", {"path": path, "content": "print('ok')\n"})
+            )
+        self.assertEqual(len(outputs), 1)
+        self.assertNotEqual(outputs[0].name, "linter")
+
+    def test_edit_broken_py_appends_linter_fix(self):
+        """run_edit 改坏 .py 同样触发 linter 闭环。"""
+        with tempfile.TemporaryDirectory(dir=WORKDIR) as tmp:
+            path = str(Path(tmp) / "mod.py")
+            main.execute_tool_calls(
+                make_tool_call("call-5", "run_write", {"path": path, "content": "def ok():\n    pass\n"})
+            )
+            outputs = main.execute_tool_calls(
+                make_tool_call("call-6", "run_edit", {"path": path, "old_text": "def ok():", "new_text": "def broken(:"})
+            )
+        self.assertEqual(len(outputs), 2)
+        self.assertEqual(outputs[1].name, "linter")
+        self.assertIn("Fix any errors below", outputs[1].content)
+
+    def test_write_non_py_no_linter(self):
+        """非 .py 文件（如 md/json）不该触发 linter。"""
+        with tempfile.TemporaryDirectory(dir=WORKDIR) as tmp:
+            path = str(Path(tmp) / "note.txt")
+            outputs = main.execute_tool_calls(
+                make_tool_call("call-7", "run_write", {"path": path, "content": "随便写点啥\n"})
+            )
+        self.assertEqual(len(outputs), 1)
+        self.assertNotEqual(outputs[0].name, "linter")
 
 
 class TestAgentLoopWithFakeLLM(unittest.TestCase):

@@ -18,7 +18,8 @@ import time
 import queue
 from context_compact import compact_messages
 from exceptions import classify
-from tools import WORKDIR
+from tools import WORKDIR, resolve_path
+from linter import lint
 from cron_scheduler import CRON_QUEUE
 from background_tasks import BACKGROUND_RESULTS
 from hooks import trigger_hooks
@@ -203,6 +204,17 @@ def execute_tool_calls(response: AIMessage) -> list:
         result = ToolMessage(content=str(output), tool_call_id=tool_call["id"], name=name)
         trigger_hooks("PostToolUse", name, args, result)
         outputs.append(result)
+
+        # linter 闭环：写完/改完 .py 文件后自动查语法错，有错追加修复指令，
+        # 模型下一轮看到 "# Fix any errors below" 就会照着修，直到语法正确。
+        if name in ("run_write", "run_edit"):
+            fname = args.get("path")
+            if fname and str(fname).endswith(".py"):
+                hint = lint(str(resolve_path(str(fname))))
+                if hint:
+                    outputs.append(
+                        ToolMessage(content=hint, tool_call_id=tool_call["id"], name="linter", status="error")
+                    )
     return outputs
 
 
@@ -280,7 +292,7 @@ def last_assistant_message(messages: list) -> AIMessage | None:
 
 if __name__ == "__main__":
     print("s15: Integrated Harness")
-    print("输入问题，回车发送。输入 q 退出。\n")
+    print("输入问题，回车发送。输入 q 退出。输入 /help 查看快捷命令（/commit /test /log /run）。\n")
 
     history = load_history()
     print(f"[history] 已恢复 {len(history)} 条对话记录\n")
