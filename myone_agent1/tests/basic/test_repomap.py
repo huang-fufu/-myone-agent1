@@ -1,10 +1,12 @@
-"""repomap.py 轻量代码地图的测试：符号提取、地图生成、预算截断。
+"""repomap.py 轻量代码地图的测试：符号提取、地图生成、预算截断、指纹缓存。
 
 回归覆盖：
 - 正则能抓顶层 def/class、async def、类内方法
 - 跳过单下划线私有符号，保留 __init__ 魔术方法
 - build_repo_map 按文件渲染、排除 .memory / __pycache__、超预算截断
+- 指纹缓存：命中复用、文件改动失效、新增文件失效、预算变化失效、损坏降级、可关闭
 """
+import json
 import sys
 import tempfile
 import unittest
@@ -13,6 +15,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "src"))
 
 from repomap import _extract_symbols, build_repo_map, scan_file
+from tools import WORKDIR
 
 
 SAMPLE = '''\
@@ -97,6 +100,72 @@ class TestBuildRepoMap(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             text = build_repo_map(Path(tmp))
         self.assertEqual(text, "(no python files)")
+
+
+class TestRepoMapCache(unittest.TestCase):
+    CACHE = ".memory/repo_map_cache.json"
+
+    def cache_path(self, root):
+        return Path(root) / self.CACHE
+
+    def test_cache_hit_returns_same_text(self):
+        with tempfile.TemporaryDirectory(dir=WORKDIR) as tmp:
+            root = Path(tmp)
+            (root / "a.py").write_text("def a():\n    pass\n", encoding="utf-8")
+            first = build_repo_map(root)
+            second = build_repo_map(root)  # 指纹未变 → 应命中缓存
+            self.assertEqual(first, second)
+            # 缓存文件已落盘，且存的就是这次的地图文本
+            data = json.loads(self.cache_path(root).read_text(encoding="utf-8"))
+            self.assertEqual(data["version"], 1)
+            self.assertEqual(data["map"], first)
+
+    def test_cache_invalidated_after_file_change(self):
+        with tempfile.TemporaryDirectory(dir=WORKDIR) as tmp:
+            root = Path(tmp)
+            p = root / "a.py"
+            p.write_text("def a():\n    pass\n", encoding="utf-8")
+            first = build_repo_map(root)
+            # 修改内容（变大，连大小指纹一起变，规避同秒 mtime 相同的极端情况）
+            p.write_text("def alpha():\n    pass\n", encoding="utf-8")
+            second = build_repo_map(root)
+            self.assertNotEqual(first, second)
+            self.assertIn("def alpha", second)
+
+    def test_cache_invalidated_after_new_file(self):
+        with tempfile.TemporaryDirectory(dir=WORKDIR) as tmp:
+            root = Path(tmp)
+            (root / "a.py").write_text("def a():\n    pass\n", encoding="utf-8")
+            build_repo_map(root)
+            (root / "b.py").write_text("def b():\n    pass\n", encoding="utf-8")  # 新增文件
+            text = build_repo_map(root)
+            self.assertIn("b.py", text)
+
+    def test_cache_invalidated_when_budget_changes(self):
+        with tempfile.TemporaryDirectory(dir=WORKDIR) as tmp:
+            root = Path(tmp)
+            (root / "big.py").write_text("def f():\n    pass\n" * 50, encoding="utf-8")
+            first = build_repo_map(root, max_chars=300)
+            second = build_repo_map(root, max_chars=400)  # 预算变化 → 缓存失效重扫
+            self.assertNotEqual(first, second)
+
+    def test_corrupt_cache_falls_back(self):
+        with tempfile.TemporaryDirectory(dir=WORKDIR) as tmp:
+            root = Path(tmp)
+            (root / "a.py").write_text("def a():\n    pass\n", encoding="utf-8")
+            # 预置一个损坏的缓存文件
+            self.cache_path(root).parent.mkdir(parents=True, exist_ok=True)
+            self.cache_path(root).write_text("{broken json", encoding="utf-8")
+            text = build_repo_map(root)  # 不应报错，静默降级重扫
+            self.assertIn("<repo_map>", text)
+            self.assertIn("a.py", text)
+
+    def test_cache_disabled(self):
+        with tempfile.TemporaryDirectory(dir=WORKDIR) as tmp:
+            root = Path(tmp)
+            (root / "a.py").write_text("def a():\n    pass\n", encoding="utf-8")
+            build_repo_map(root, use_cache=False)
+            self.assertFalse(self.cache_path(root).exists())  # 关缓存 → 不落盘
 
 
 if __name__ == "__main__":
