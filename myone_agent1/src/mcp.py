@@ -22,6 +22,7 @@ from subagents import task
 from todo_write import todo_write
 from cron_scheduler import list_crons, cancel_cron, schedule_cron
 from repomap import build_repo_map
+from editblock import apply_edits
 
 
 def normalize_mcp_name(name: str) -> str:
@@ -132,6 +133,7 @@ BASE_TOOLS = [
     todo_write, load_skill, task,
     connect_mcp,
     list_crons, cancel_cron, schedule_cron,
+    apply_edits,
 ]
 CURRENT_TOOL_MAP: dict[str, Any] = {}
 
