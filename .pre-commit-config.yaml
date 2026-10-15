@@ -1,0 +1,13 @@
+# 提交前自动检查：只用了 local 钩子，不依赖外部仓库下载，离线可用。
+# 启用方式：pip install pre-commit && pre-commit install
+# 之后每次 git commit 前会自动跑下面的钩子，全绿才放行提交。
+repos:
+  - repo: local
+    hooks:
+      - id: unit-tests
+        name: unit tests (run_tests.py)
+        entry: python myone_agent1/run_tests.py
+        language: system
+        # 只当暂存区里出现 Python 文件时才触发
+        files: '\.py$'
+        pass_filenames: false

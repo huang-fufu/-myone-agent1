@@ -1,0 +1,41 @@
+# 现代 Python 项目配置：统一管理元数据、依赖、工具设置。
+# 本仓库采用裸导入方案（代码在 myone_agent1/src/ 下平级 import，包根无 __init__.py），
+# 因此它不是可 pip 安装的分发包——pyproject.toml 仅用于集中声明项目信息与依赖。
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "myone-agent1"
+version = "0.1.0"
+description = "自研轻量 Agent 基础框架：工具系统、Hook、权限、Todo、Skill、记忆、后台任务、Cron、MCP、上下文压缩"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+    { name = "huang-fufu" },
+]
+keywords = ["agent", "llm", "framework", "learning"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Intended Audience :: Developers",
+]
+
+# 依赖与 requirements.txt 保持一致（requirements.txt 仍保留给 pip install -r 使用）。
+dependencies = [
+    "langchain>=0.3",
+    "langchain-core>=0.3",
+    "langchain-openai>=0.2",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pre-commit>=3.0",
+]
+
+[tool.setuptools]
+# 显式声明不打包任何模块：仓库入口是 myone_agent1/ 下的脚本，不是可分发包。
+packages = []

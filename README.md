@@ -26,8 +26,22 @@ Myone_agent1/                      # 项目根目录
 ├── _acceptance.py                 # 10 节自动验收脚本（临时文件，可删）
 ├── .env                           # 环境变量（API Key / 模型 / 项目路径）
 ├── requirements.txt               # 依赖清单（必装 + 可选）
+├── pyproject.toml                 # 现代项目配置（元数据 + 依赖统一声明）
+├── .pre-commit-config.yaml        # 提交前自动跑测试
+├── .github/workflows/ci.yml       # push / PR 自动跑测试
+├── LICENSE                        # MIT 开源协议
+├── HISTORY.md                     # 更新记录
+├── CONTRIBUTING.md                # 贡献指南
 └── README.md                      # 本文件
 ```
+
+---
+
+## 工程化配置
+
+- **依赖统一**：`requirements.txt` 与 `pyproject.toml` 的 `[project] dependencies` 保持一致。
+- **提交前检查**：装好 `pre-commit` 后执行 `pre-commit install`，每次 commit 自动跑 `run_tests.py`。
+- **持续集成**：推送到 GitHub 后 Actions 自动跑全部测试（测试用 FakeLLM，无需 API key）。
 
 ---
 
