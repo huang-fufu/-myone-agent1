@@ -23,6 +23,7 @@ from todo_write import todo_write
 from cron_scheduler import list_crons, cancel_cron, schedule_cron
 from repomap import build_repo_map
 from editblock import apply_edits
+from models import get_model_info, map_chars_for
 
 
 def normalize_mcp_name(name: str) -> str:
@@ -169,10 +170,26 @@ SYSTEM_BASE = (
 
 
 def assemble_system_prompt(query_text: str = "") -> str:
-    return "\n\n".join([
+    # 按模型元数据表换算代码地图预算（窗口越大地图塞得越多），取不到配置就用默认 8000。
+    max_chars, model_line = 8000, ""
+    try:
+        from config import load_config  # 延迟导入，避免循环依赖
+        info = get_model_info(load_config().model_name)
+        max_chars = map_chars_for(info)
+        model_line = (
+            f"Model: {info.name} (context {info.context_window}, "
+            f"edit_format {info.edit_format})"
+        )
+    except Exception:
+        pass  # 配置缺失/损坏时静默降级，绝不拖垮主流程
+
+    parts = [
         SYSTEM_BASE,
-        build_repo_map(),           # 轻量代码地图：让模型开局看到项目结构
+        build_repo_map(max_chars=max_chars),  # 轻量代码地图：让模型开局看到项目结构
         skills_catalog.invoke({}),      # @tool 装饰过，须用 invoke 而非直接调用
         memory_section(query_text),     # 普通函数，直接调
         mcp_state_section(),
-    ])
+    ]
+    if model_line:
+        parts.append(model_line)
+    return "\n\n".join(parts)
