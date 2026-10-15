@@ -31,6 +31,10 @@ from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, ToolMessage, AIMessage, SystemMessage
 
 from config import CONFIG
+from console import IO
+
+# 全局 IO 实例：所有输入输出统一走这里（对齐 Aider io.py 抽象）。
+io = IO()
 
 API_KEY_INDEX = [0]  # 当前使用的 key 下标（运行时状态，非配置）
 
@@ -251,15 +255,15 @@ def agent_loop(messages: list) -> None:
 def print_assistant_message(message: AIMessage) -> None:
     content = message.content
     if isinstance(content, str):
-        print(content)
+        io.tool_output(content)
         return
     if isinstance(content, list):
         for block in content:
             if isinstance(block, dict):
                 if block.get("type") == "text":
-                    print(block.get("text", ""))
+                    io.tool_output(block.get("text", ""))
             elif hasattr(block, "text"):
-                print(block.text)
+                io.tool_output(block.text)
 
 
 def print_tool_activity(message) -> None:
@@ -269,18 +273,18 @@ def print_tool_activity(message) -> None:
             args = tool_call.get("args", {})
             if name == "run_bash":
                 bg = " (background)" if args.get("run_in_background") else ""
-                print(f"\033[33m$ {args.get('command', '')}{bg}\033[0m")
+                io.tool_output(f"\033[33m$ {args.get('command', '')}{bg}\033[0m")
             else:
                 # 精简回放：show 只留关键参数，避免整个 dict 平铺刷屏。
                 show = {k: args[k] for k in ("path", "pattern", "command") if k in args}
-                print(f"\033[33m{name}{show if show else ''}\033[0m")
+                io.tool_output(f"\033[33m{name}{show if show else ''}\033[0m")
         return
     if isinstance(message, ToolMessage):
         content = str(message.content)
         if getattr(message, "status", None) == "error":
-            print(f"(blocked/error) {content[:200]}")
+            io.tool_output(f"(blocked/error) {content[:200]}")
         else:
-            print(content[:200])
+            io.tool_output(content[:200])
 
 
 def last_assistant_message(messages: list) -> AIMessage | None:
@@ -291,15 +295,15 @@ def last_assistant_message(messages: list) -> AIMessage | None:
 
 
 if __name__ == "__main__":
-    print("s15: Integrated Harness")
-    print("输入问题，回车发送。输入 q 退出。输入 /help 查看快捷命令（/commit /test /log /run）。\n")
+    io.tool_output("s15: Integrated Harness")
+    io.tool_output("输入问题，回车发送。输入 q 退出。输入 /help 查看快捷命令（/commit /test /log /run）。\n")
 
     history = load_history()
-    print(f"[history] 已恢复 {len(history)} 条对话记录\n")
+    io.tool_output(f"[history] 已恢复 {len(history)} 条对话记录\n")
 
     while True:
         try:
-            query = input("\033[36ms15 >> \033[0m")
+            query = io.read_input("\033[36ms15 >> \033[0m")
         except (EOFError, KeyboardInterrupt):
             break
         if query.strip().lower() in ("q", "exit", ""):
@@ -309,8 +313,8 @@ if __name__ == "__main__":
         if query.strip().startswith("/") or query.strip().startswith("!"):
             result = COMMANDS.run(query.strip())
             if result:
-                print(result)
-            print()
+                io.tool_output(result)
+            io.tool_output("")
             continue
 
         history.append(HumanMessage(content=query))
@@ -334,5 +338,5 @@ if __name__ == "__main__":
                     elif hasattr(block, "text"):
                         texts.append(block.text)
                 append_history_entry("assistant", "\n".join(t for t in texts if t))
-        print()
+        io.tool_output("")
 
