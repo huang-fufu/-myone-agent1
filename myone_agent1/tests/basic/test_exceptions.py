@@ -46,9 +46,10 @@ class TestClassify(unittest.TestCase):
         self.assertFalse(info.is_context)
         self.assertFalse(info.retry)
 
-    def test_unknown_retryable_with_hint(self):
+    def test_unknown_not_retryable_with_hint(self):
+        # 未知异常 fail fast：没登记过的异常默认不重试，避免对意外错误反复退避。
         info = classify(SomeWeirdError("boom"))
-        self.assertTrue(info.retry)
+        self.assertFalse(info.retry)
         self.assertIn("未知错误", info.hint)
 
     def test_stdlib_connection_error_retryable(self):
