@@ -3,6 +3,7 @@
 只在工作目录内操作，用 subprocess 调 git，不引入 GitPython。
 默认仓库目录是 WORKDIR；测试可用临时目录。
 """
+import os
 import subprocess
 from pathlib import Path
 
@@ -46,6 +47,28 @@ class GitRepo:
             return False
         return bool(self._git("status", "--porcelain").strip())
 
+    def repo_root(self) -> Path | None:
+        """定位仓库根目录；不在任何 git 仓库内返回 None。"""
+        if not self.is_repo():
+            return None
+        return Path(self._git("rev-parse", "--show-toplevel")).resolve()
+
+    def rollback(self) -> str:
+        """回滚上一次提交（git reset --hard HEAD~1）；无历史时返回提示。"""
+        if not self.is_repo():
+            return "不是 git 仓库，无法回滚"
+        try:
+            self._git("reset", "--hard", "HEAD~1")
+            return "已回滚上一次提交"
+        except RuntimeError as e:
+            return f"没有可回滚的提交：{e}"
+
+    def clean(self) -> str:
+        """删除所有未跟踪的文件与目录（git clean -fd）。"""
+        if not self.is_repo():
+            return "不是 git 仓库，无法清理"
+        return self._git("clean", "-fd")
+
     def changed_files(self) -> list[str]:
         """相对 HEAD 的变更文件名；首次提交前返回空。"""
         if not self.is_repo():
@@ -84,6 +107,25 @@ class GitRepo:
         if not self.is_dirty():
             return "没有可提交的变更"
         self.add()
+        msg = message or self._auto_message()
+        return self._git("commit", "-m", msg)
+
+    def commit_files(self, paths, message: str | None = None) -> str:
+        """只暂存并提交指定路径（保险丝自动提交用）；失败抛 RuntimeError。
+
+        paths 为文件路径列表（Path 或 str）。消息缺省从变更文件名自动生成。
+        非 git 仓库、路径为空、或提交失败（如缺 git 身份）时抛 RuntimeError，
+        由调用方决定降级，绝不静默吞掉错误。
+        """
+        if not self.is_repo() or not paths:
+            raise RuntimeError("非 git 仓库或无待提交路径")
+        add_args = []
+        for p in paths:
+            rel = os.path.relpath(Path(p).resolve(), self.dir)
+            add_args.append(rel.replace(os.sep, "/"))
+        self._git("add", *add_args)
+        if not self.is_dirty():
+            return "没有可提交的变更"
         msg = message or self._auto_message()
         return self._git("commit", "-m", msg)
 

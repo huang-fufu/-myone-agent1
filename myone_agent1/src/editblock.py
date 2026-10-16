@@ -21,6 +21,7 @@ from pathlib import Path
 
 from langchain_core.tools import tool
 
+from repo import GitRepo
 from tools import WORKDIR
 
 # 匹配一对 <path>/<search>/<replace> 块；[\s\S] 保留内容原样（含缩进）。
@@ -102,13 +103,51 @@ def _report_failures(failures) -> str:
     return "\n".join(res)
 
 
-def apply_edits_core(edits, root: Path = WORKDIR) -> str:
+def _git_fuse_report() -> str:
+    """git 保险丝：工作区脏时拒绝编辑（仿 Aider 的 dirty 提示）。"""
+    return (
+        "# SEARCH/REPLACE edits blocked by git fuse\n"
+        "git 仓库有未提交的变更，为避免混淆本次编辑与历史改动，已整批拒绝。\n"
+        "请先处理工作区再重试 apply_edits：\n"
+        "1. 提交当前改动：用 run_bash 执行 git add -A && git commit -m \"<msg>\"\n"
+        "2. 或回滚上一次提交：调用 undo_last_change 工具\n"
+        "工作区干净后，重新提交同样的 edits 即可。"
+    )
+
+
+def _try_auto_commit(root: Path, written_paths: list) -> str | None:
+    """编辑全部落盘后，把本次涉及的文件自动提交。
+
+    非 git 仓库或提交失败（如缺 git 身份）时静默降级：返回 None，不阻塞编辑。
+    提交成功返回一行简短确认，供附加到成功报告。
+    """
+    try:
+        repo = GitRepo(root)
+        if not repo.is_repo():
+            return None
+        out = repo.commit_files(written_paths)
+        lines = (out or "").strip().splitlines()
+        return "auto-committed: " + (lines[-1] if lines else out)
+    except Exception:
+        return None  # 静默降级，绝不阻塞编辑
+
+
+def apply_edits_core(edits, root: Path = WORKDIR, git_fuse: bool = True) -> str:
     """应用编辑列表。
 
     - 先对每个块做存在性 + 唯一性校验，全部通过才统一写入
     - 任一块失败 → 返回失败报告，一个文件都不改动
     - search 为空且文件不存在 → 视为新建文件
+    - git_fuse：仓库工作区脏时先拒绝编辑（仿 Aider dirty 提示），
+      编辑全部落盘后自动提交本次涉及的文件；非仓库/提交失败时静默跳过
     """
+    if git_fuse:
+        try:
+            if GitRepo(root).is_dirty():
+                return _git_fuse_report()
+        except Exception:
+            pass  # git 不可用/非仓库 → 跳过保险丝
+
     planned = []    # [(Path, 新内容)] 待统一写入
     failures = []   # [(索引, path, 原因, search, 文件原文)]
 
@@ -148,14 +187,21 @@ def apply_edits_core(edits, root: Path = WORKDIR) -> str:
     if failures:
         return _report_failures(failures)
 
+    written = []
     for file_path, new_text in planned:
         try:
             file_path.parent.mkdir(parents=True, exist_ok=True)
             file_path.write_text(new_text, encoding="utf-8")
         except OSError as e:
             return f"Error: 写入 {file_path} 失败: {e}"
+        written.append(file_path)
 
-    return _report_success(planned)
+    report = _report_success(planned)
+    if git_fuse:
+        note = _try_auto_commit(root, written)
+        if note:
+            report += f"\n{note}"
+    return report
 
 
 @tool
@@ -172,6 +218,8 @@ def apply_edits(edits: list) -> str:
     - search 必须唯一匹配；找不到或不唯一会整批拒绝，一个文件都不改动
     - search 为空且文件不存在时，视为新建文件
     - 失败时会提示最相似的真实行，方便修正后重试
+    - git 仓库工作区有未提交变更时整批拒绝（先提交，或调用 undo_last_change 回滚）
+    - 编辑成功后自动提交本次涉及的文件（非 git 仓库或提交失败时自动跳过）
     """
     try:
         return apply_edits_core(edits)

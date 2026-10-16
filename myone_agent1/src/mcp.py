@@ -24,6 +24,7 @@ from cron_scheduler import list_crons, cancel_cron, schedule_cron
 from repomap import build_repo_map
 from editblock import apply_edits
 from models import get_model_info, map_chars_for
+from repo import GitRepo
 
 
 def normalize_mcp_name(name: str) -> str:
@@ -129,12 +130,40 @@ def _make_mcp_tool(client: MCPClient, raw_name: str, prefixed: str, description:
     return StructuredTool.from_function(func=_runner, name=prefixed, description=description)
 
 
+def _undo_last_change_core() -> str:
+    """undo 逻辑放 _core：避免 @tool 递归自调用（参考 apply_edits 模式）。"""
+    repo = GitRepo()
+    if not repo.is_repo():
+        return "当前目录不在 git 仓库内，无法回滚。"
+    return repo.rollback()
+
+
+@tool
+def undo_last_change() -> str:
+    """回滚上一次提交：撤销最近一次自动提交（apply_edits 保险丝提交）的全部改动。
+
+    用法：直接调用，无需传参。执行 `git reset --hard HEAD~1`，
+    把整个工作区恢复到上一个提交的状态。跨平台：内部走系统 git，
+    在 Windows / macOS / Linux 行为一致。
+
+    适用场景：模型刚才的编辑明显错误、需要整体撤销重来。
+
+    注意：
+    - 会丢弃最近一次提交的改动，不可逆，请确认后再用
+    - 没有可回滚的历史（如刚 init 只有一个提交）时返回提示，不报错
+    """
+    try:
+        return _undo_last_change_core()
+    except Exception as e:
+        return f"Error: {e}"
+
+
 BASE_TOOLS = [
     run_bash, run_read, run_write, run_edit, run_glob,
     todo_write, load_skill, task,
     connect_mcp,
     list_crons, cancel_cron, schedule_cron,
-    apply_edits,
+    apply_edits, undo_last_change,
 ]
 CURRENT_TOOL_MAP: dict[str, Any] = {}
 
