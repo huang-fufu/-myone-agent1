@@ -33,7 +33,7 @@ from langchain_core.messages import HumanMessage, ToolMessage, AIMessage, System
 from config import CONFIG
 from console import IO
 
-# 全局 IO 实例：所有输入输出统一走这里（对齐 Aider io.py 抽象）。
+# 全局 IO 实例：所有输入输出统一走这里。
 io = IO()
 
 API_KEY_INDEX = [0]  # 当前使用的 key 下标（运行时状态，非配置）
@@ -93,7 +93,7 @@ def call_model_with_recovery(system: str, messages: list, tools: list):
 
 
 # ---------------------------------------------------------------------------
-# 会话持久化：照抄 Aider append_chat_history 思路（追加写盘 + 失败降级）
+# 会话持久化：追加写盘 + 失败降级
 # ---------------------------------------------------------------------------
 
 HISTORY_FILE = WORKDIR / ".memory" / "history.jsonl"

@@ -1,4 +1,4 @@
-"""斜杠命令系统：任何 cmd_xxx 方法自动变成 /xxx 命令（借鉴 Aider commands.py）。
+"""斜杠命令系统：任何 cmd_xxx 方法自动变成 /xxx 命令。
 
 机制三件套：
 - 命名即注册：定义 `def cmd_foo(self, args)` 就自动有 `/foo` 命令，零注册代码

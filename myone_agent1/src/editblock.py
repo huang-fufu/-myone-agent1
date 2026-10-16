@@ -1,4 +1,4 @@
-"""SEARCH/REPLACE 编辑格式：让模型用精确修改块改文件（对齐 Aider EditBlockCoder 的轻量版）。
+"""SEARCH/REPLACE 编辑格式：让模型用精确修改块改文件。
 
 格式（模型输出文本，或直接传结构化 edits）：
 
@@ -10,10 +10,10 @@
     新代码片段（替换进去）
     </replace>
 
-设计要点（借鉴 Aider editblock_coder.py）：
+设计要点：
 - 先全部校验再统一写入：任一块失败 → 一个文件都不落盘（原子性）
 - search 必须唯一匹配：找不到 → 报错；匹配多处 → 拒绝（防止误改）
-- 失败报告仿 Aider SearchReplaceNoExactMatch，附最相似的真实行提示，让模型自我纠错
+- 失败报告附最相似的真实行提示，让模型自我纠错
 """
 import re
 from difflib import SequenceMatcher
@@ -104,7 +104,7 @@ def _report_failures(failures) -> str:
 
 
 def _git_fuse_report() -> str:
-    """git 保险丝：工作区脏时拒绝编辑（仿 Aider 的 dirty 提示）。"""
+    """git 保险丝：工作区脏时拒绝编辑（脏则拒绝的严格策略）。"""
     return (
         "# SEARCH/REPLACE edits blocked by git fuse\n"
         "git 仓库有未提交的变更，为避免混淆本次编辑与历史改动，已整批拒绝。\n"
@@ -138,7 +138,7 @@ def apply_edits_core(edits, root: Path = WORKDIR, git_fuse: bool = True) -> str:
     - 先对每个块做存在性 + 唯一性校验，全部通过才统一写入
     - 任一块失败 → 返回失败报告，一个文件都不改动
     - search 为空且文件不存在 → 视为新建文件
-    - git_fuse：仓库工作区脏时先拒绝编辑（仿 Aider dirty 提示），
+    - git_fuse：仓库工作区脏时先拒绝编辑（脏则拒绝的严格策略），
       编辑全部落盘后自动提交本次涉及的文件；非仓库/提交失败时静默跳过
     """
     if git_fuse:

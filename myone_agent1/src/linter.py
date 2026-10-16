@@ -1,14 +1,14 @@
-"""轻量版 linter —— 借鉴 Aider 的 linter.py，只用 Python 内置能力，零第三方依赖。
+"""轻量版 linter —— 只用 Python 内置能力，零第三方依赖。
 
 定位：自动查错闭环的一环。
 模型改完 .py 文件后，用 lint() 检查语法，把错误文本喂回模型，模型照着修。
 
-对照 Aider 的取舍：
+设计取舍：
 - 保留：内置 compile() 查语法错误（零依赖，SyntaxError traceback 自带出错行 + ^ 指示）
 - 砍掉：tree-sitter 语法树（重依赖）、flake8 外部命令（需安装）、tree_context 渲染
   （与 repomap 用正则替代 tree-sitter 的降级思路一致）
 
-输出格式沿袭 Aider，开头那句 "# Fix any errors below, if possible." 是给模型的指令。
+输出开头那句 "# Fix any errors below, if possible." 是给模型的指令。
 """
 
 import traceback

@@ -1,14 +1,14 @@
 """轻量代码地图：扫描工作区 .py 文件，提取函数/类，渲染成结构树。
 
-借鉴 Aider repomap.py 的思路（解析 → 排序 → 渲染），但砍掉重型依赖：
+设计思路（解析 → 排序 → 渲染），但砍掉重型依赖：
 - tree-sitter → 正则扫 `def` / `class`（够用的近似，语法无关）
 - PageRank 排序 → 跳过（小项目直接按文件顺序列）
 - 模型 tokenizer 预算 → 字符数近似（每 token ≈ 4 字符）
 
-输出格式仿 Aider：`<repo_map> 文件路径 + 符号清单 </repo_map>`，
+输出格式：`<repo_map> 文件路径 + 符号清单 </repo_map>`，
 作为 system prompt 的一个区块，让模型开局就知道项目结构，不用逐个文件搜。
 
-缓存（对齐 Aider 的 mtime 缓存思路，见其 repomap.py get_tags）：
+缓存（按文件的 mtime 指纹判断是否复用）：
 - 指纹 = 每个 .py 文件的 (大小, mtime)，只读元数据、不打开文件内容
 - 指纹没变 → 直接复用 .memory/repo_map_cache.json 里的上次地图文本，零扫描
 - 任何文件增/删/改 → 指纹变化 → 全量重扫并写回缓存
@@ -27,7 +27,7 @@ _SYMBOL_RE = re.compile(
     re.MULTILINE,
 )
 
-# 缓存格式版本：解析/渲染逻辑一变，旧缓存整体作废（仿 Aider 的 CACHE_VERSION）。
+# 缓存格式版本：解析/渲染逻辑一变，旧缓存整体作废。
 _CACHE_VERSION = 1
 # 缓存文件相对项目根的路径（.memory 目录已在 .gitignore，不会提交到仓库）。
 _CACHE_FILE = ".memory/repo_map_cache.json"

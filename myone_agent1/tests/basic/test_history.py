@@ -1,4 +1,4 @@
-"""会话持久化：追加写盘 + 启动恢复（照抄 Aider append_chat_history 思路）。"""
+"""会话持久化：追加写盘 + 启动恢复。"""
 import json
 import sys
 import tempfile

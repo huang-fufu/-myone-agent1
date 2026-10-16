@@ -1,4 +1,4 @@
-"""Git 集成：轻量封装 git CLI（借鉴 Aider 的 repo.py）。
+"""Git 集成：轻量封装 git CLI。
 
 只在工作目录内操作，用 subprocess 调 git，不引入 GitPython。
 默认仓库目录是 WORKDIR；测试可用临时目录。

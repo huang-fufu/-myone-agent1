@@ -1,6 +1,6 @@
 """主循环的 FakeLLM 测试：不调真实模型，用预设响应驱动 agent 循环。
 
-思路抄自 Aider 的 tests/basic/test_main.py：
+设计思路：
 - FakeModel 替换 main.MODEL：bind_tools 原样返回自己，invoke 依次吐出预设 AIMessage
 - 只测框架逻辑：工具调用解析、工具执行、结果回流、循环终止
 - 全程不碰真实 API，不花一分钱

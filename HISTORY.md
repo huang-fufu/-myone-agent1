@@ -18,7 +18,7 @@
 - 上下文压缩（`context_compact.py`）、异常声明式分类（`exceptions.py`）
 - 会话持久化（`main.py`）、API key 自动轮换、错误恢复重试
 
-### 对齐 Aider 内核（四件套）
+### 内核四件套
 - 编辑格式：SEARCH/REPLACE 编辑块（`editblock.py`，先校验后统一落盘）
 - IO 抽象：`console.py` 收口全部 input/print
 - 模型元数据表：`models.py`（按模型窗口动态算 repomap 预算）

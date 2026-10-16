@@ -1,7 +1,7 @@
-"""异常分类：一张表决定每个异常该怎么处理（借鉴 Aider 的 exceptions.py）。
+"""异常分类：一张表决定每个异常该怎么处理。
 
-Aider 用 litellm 的所有异常建表；这里不依赖任何具体 SDK，
-直接用异常类名（type(e).__name__）查表，OpenAI 等库的异常名天然匹配。
+不依赖任何具体 SDK，直接用异常类名（type(e).__name__）查表，
+OpenAI 等库的异常名天然匹配。
 """
 from dataclasses import dataclass
 

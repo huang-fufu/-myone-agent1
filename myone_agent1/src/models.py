@@ -1,7 +1,7 @@
-"""模型能力元数据表（对齐 Aider models.py + model-settings.yml 的轻量版）。
+"""模型能力元数据表。
 
 每个模型记录：上下文窗口、最大输出、编辑格式、费用。目前两个用途：
-- assemble_system_prompt 按窗口换算代码地图预算（借鉴 Aider max_map_tokens 思路）
+- assemble_system_prompt 按窗口换算代码地图预算（窗口越大地图预算越多）
 - 将来按 edit_format 自动选编辑模式 / 估算成本
 
 未知模型一律返回安全默认值，绝不抛异常——查不到就按最保守配置跑。
@@ -61,7 +61,7 @@ def get_model_info(name: str) -> ModelInfo:
 def map_tokens_for(info: ModelInfo, ratio: float = 0.1) -> int:
     """代码地图预算 ≈ 上下文窗口 × ratio（默认 10%），带下限/上限。
 
-    借鉴 Aider max_map_tokens 思路：窗口越大，地图能塞的相关代码越多，
+    窗口越大，地图能塞的相关代码越多，
     但地图永远不该占满窗口，取 10% 留足对话空间。
     """
     tokens = int(info.context_window * ratio)

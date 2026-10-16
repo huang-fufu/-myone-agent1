@@ -1,4 +1,4 @@
-"""repo.py Git 集成测试：临时目录建真实 git 仓库验证（借鉴 Aider 的 test_repo.py）。
+"""repo.py Git 集成测试：临时目录建真实 git 仓库验证。
 
 本机没有 git 时整组跳过，不影响其它测试。
 """
