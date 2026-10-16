@@ -1,0 +1,17 @@
+# 构建上下文排除项：保持镜像小、防止密钥/本地状态进镜像
+.git
+.gitignore
+.idea
+.memory
+__pycache__
+*.pyc
+.env
+.github
+docs
+Dockerfile
+.dockerignore
+HISTORY.md
+LICENSE
+CONTRIBUTING.md
+pyproject.toml
+.pre-commit-config.yaml
